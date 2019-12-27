@@ -1,5 +1,6 @@
 import { GroupPermission } from 'app/model/group.model';
 import { ProjectIntegration } from 'app/model/integration.model';
+import { Operation } from 'app/model/operation.model';
 import { WNode, WNodeHook, WNodeTrigger, Workflow, WorkflowNotification } from 'app/model/workflow.model';
 import { WorkflowNodeRun, WorkflowRun } from 'app/model/workflow.run.model';
 
@@ -216,5 +217,10 @@ export class UpdateFavoriteWorkflow {
 export class CleanWorkflowState {
     static readonly type = '[Workflow] Clean Workflow State';
     constructor() { }
+}
+
+export class UpdateOperation {
+    static readonly type = '[Workflow] Update operation';
+    constructor(public payload: { ope: Operation }) { }
 }
 

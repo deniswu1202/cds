@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, NgZone, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
@@ -57,8 +57,6 @@ export class WorkflowWNodeComponent implements OnInit {
 
     // Subscription
     sub: Subscription;
-
-    zone = new NgZone({});
 
     // Modal
     @ViewChild('workflowDeleteNode', { static: false })

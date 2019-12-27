@@ -1,12 +1,12 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, NgZone, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, ViewChild } from '@angular/core';
 import { Store } from '@ngxs/store';
 import { ModalTemplate, SuiActiveModal, SuiModalService, TemplateModalConfig } from '@richardlt/ng2-semantic-ui';
+import { EventService } from 'app/event.service';
 import { Operation } from 'app/model/operation.model';
 import { Project } from 'app/model/project.model';
 import { Workflow } from 'app/model/workflow.model';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
-import { CDSWebWorker } from 'app/shared/worker/web.worker';
-import { AuthenticationState } from 'app/store/authentication.state';
+import { WorkflowState, WorkflowStateModel } from 'app/store/workflow.state';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -21,17 +21,18 @@ export class WorkflowSaveAsCodeComponent {
     @Input() project: Project;
     @Input() workflow: Workflow;
     ope: Operation;
-    webworkerSub: Subscription;
 
     @ViewChild('saveAsCodeModal', { static: false })
     public saveAsCodeModal: ModalTemplate<boolean, boolean, void>;
     modalConfig: TemplateModalConfig<boolean, boolean, void>;
     modal: SuiActiveModal<boolean, boolean, void>;
 
+    stateSub: Subscription;
+
     constructor(
         private _modalService: SuiModalService,
-        private _store: Store,
-        private _cd: ChangeDetectorRef
+        private _eventService: EventService,
+        private _store: Store
     ) { }
 
     show(ope: Operation): void {
@@ -40,31 +41,13 @@ export class WorkflowSaveAsCodeComponent {
             this.modalConfig = new TemplateModalConfig<boolean, boolean, void>(this.saveAsCodeModal);
             this.modalConfig.mustScroll = true;
             this.modal = this._modalService.open(this.modalConfig);
-            this.startOperationPull();
+            this._eventService.addOperationFilter(this.ope.uuid);
+            this.stateSub = this._store.select(WorkflowState.getCurrent()).subscribe((s: WorkflowStateModel) => {
+                if (s.operation && s.operation.uuid === this.ope.uuid) {
+                    this.ope = s.operation;
+                }
+            });
         }
     }
 
-    startOperationPull() {
-        // poll operation
-        let zone = new NgZone({ enableLongStackTrace: false });
-        let webworker = new CDSWebWorker('./assets/worker/web/operation.js');
-        webworker.start({
-            'user': this._store.selectSnapshot(AuthenticationState.user),
-            // 'session': this._authStore.getSessionToken(),
-            'api': '/cdsapi',
-            'path': '/project/' + this.project.key + '/workflows/' + this.workflow.name + '/ascode/' + this.ope.uuid
-        });
-        this.webworkerSub = webworker.response().subscribe(operation => {
-            if (operation) {
-                zone.run(() => {
-                    this.ope = JSON.parse(operation);
-                    if (this.ope.status > 1) {
-                        webworker.stop();
-                        this.webworkerSub.unsubscribe();
-                    }
-                    this._cd.markForCheck();
-                });
-            }
-        });
-    }
 }

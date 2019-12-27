@@ -6,21 +6,20 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, NavigationEnd, NavigationStart, ResolveEnd, ResolveStart, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { EventService } from 'app/event.service';
+import { WebSocketMessage } from 'app/model/websocket.model';
 import { GetCDSStatus } from 'app/store/cds.action';
 import { CDSState } from 'app/store/cds.state';
 import { Observable } from 'rxjs';
-import { bufferTime, filter, map, mergeMap } from 'rxjs/operators';
+import { filter, map, mergeMap } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
 import * as format from 'string-format-obj';
-import { AppService } from './app.service';
-import { Event, EventType } from './model/event.model';
 import { AuthentifiedUser } from './model/user.model';
 import { LanguageStore } from './service/language/language.store';
 import { NotificationService } from './service/notification/notification.service';
 import { ThemeStore } from './service/theme/theme.store';
 import { AutoUnsubscribe } from './shared/decorator/autoUnsubscribe';
 import { ToastService } from './shared/toast/ToastService';
-import { CDSSharedWorker } from './shared/worker/shared.worker';
 import { CDSWebWorker } from './shared/worker/web.worker';
 import { CDSWorker } from './shared/worker/worker';
 import { AuthenticationState } from './store/authentication.state';
@@ -38,8 +37,6 @@ export class AppComponent implements OnInit {
     isConnected: boolean;
     hideNavBar: boolean;
     versionWorker: CDSWebWorker;
-    sseWorker: CDSWorker;
-    heartbeatToken: number;
     zone: NgZone;
     currentVersion = 0;
     showUIUpdatedBanner: boolean;
@@ -51,12 +48,12 @@ export class AppComponent implements OnInit {
     _sseSubscription: Subscription;
     displayResolver: boolean;
     toasterConfig: any;
-    lastPing: number;
-    currentTheme: string;
     eventsRouteSubscription: Subscription;
     maintenance: boolean;
     cdsstateSub: Subscription;
     user: AuthentifiedUser;
+
+    previousURL: string;
 
     @ViewChild('gamification', {static: false})
     eltGamification: ElementRef;
@@ -70,9 +67,9 @@ export class AppComponent implements OnInit {
         private _titleService: Title,
         private _router: Router,
         private _notification: NotificationService,
-        private _appService: AppService,
         private _toastService: ToastService,
-        private _store: Store
+        private _store: Store,
+        private _eventService: EventService
     ) {
         this.zone = new NgZone({ enableLongStackTrace: false });
         this.toasterConfig = this._toastService.getConfig();
@@ -115,11 +112,10 @@ export class AppComponent implements OnInit {
             if (!user) {
                 delete this.user;
                 this.isConnected = false;
-                this.stopWorker(this.sseWorker, null);
             } else {
                 this.user = user;
                 this.isConnected = true;
-                this.startSSE();
+                this._eventService.startWebsocket();
             }
         });
         this.startVersionWorker();
@@ -137,6 +133,14 @@ export class AppComponent implements OnInit {
 
         this._routerNavEndSubscription = this._router.events
             .pipe(filter((event) => event instanceof NavigationEnd))
+            .pipe(map((e: NavigationEnd) => {
+                if ((!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0])) {
+                    this.previousURL = e.url;
+                    this.manageWebsocketFilterByUrl(e.url);
+                    return;
+                }
+
+            }))
             .pipe(map(() => this._activatedRoute))
             .pipe(map((route) => {
                 let params = {};
@@ -144,7 +148,7 @@ export class AppComponent implements OnInit {
                     route = route.firstChild;
                     Object.assign(params, route.snapshot.params, route.snapshot.queryParams);
                 }
-                this._appService.updateRoute(params);
+                this._eventService.updateRoute(params);
                 return { route, params: Observable.of(params) };
             }))
             .pipe(filter((event) => event.route.outlet === 'primary'))
@@ -173,6 +177,65 @@ export class AppComponent implements OnInit {
         });
     }
 
+    manageWebsocketFilterByUrl(url: string) {
+        let msg =  new WebSocketMessage();
+        let urlSplitted = url.substr(1, url.length - 1).split('/');
+        switch (urlSplitted[0]) {
+            case 'home':
+                msg.favorites = true;
+                break;
+            case 'project':
+                switch (urlSplitted.length) {
+                    case 1: // project creation
+                        break;
+                    case 2: // project view
+                        msg.project_key = urlSplitted[1].split('?')[0];
+                        break;
+                    default: // App/pipeline/env/workflow view
+                        msg.project_key = urlSplitted[1].split('?')[0];
+                        this.manageWebsocketFilterProjectPath(urlSplitted, msg);
+                }
+                break;
+            case 'settings':
+                if (urlSplitted.length === 2 && urlSplitted[1] === 'queue') {
+                    msg.queue = true;
+                }
+                break;
+        }
+        this._eventService.updateFilter(msg);
+    }
+
+    manageWebsocketFilterProjectPath(urlSplitted: Array<string>, msg: WebSocketMessage) {
+        switch (urlSplitted[2]) {
+            case 'pipeline':
+                if (urlSplitted.length >= 4) {
+                    msg.pipeline_name = urlSplitted[3].split('?')[0];
+                }
+                break;
+            case 'application':
+                if (urlSplitted.length >= 4) {
+                    msg.application_name = urlSplitted[3].split('?')[0];
+                }
+                break;
+            case 'environment':
+                if (urlSplitted.length >= 4) {
+                    msg.environment_name = urlSplitted[3].split('?')[0];
+                }
+                break;
+            case 'workflow':
+                if (urlSplitted.length >= 4) {
+                    msg.workflow_name = urlSplitted[3].split('?')[0];
+                }
+                if (urlSplitted.length >= 6) {
+                    msg.workflow_run_num = Number(urlSplitted[5].split('?')[0]);
+                }
+                if (urlSplitted.length >= 8) {
+                    msg.workflow_node_run_id = Number(urlSplitted[7].split('?')[0]);
+                }
+                break;
+        }
+    }
+
     stopWorker(w: CDSWorker, s: Subscription): void {
         if (w) {
             w.stop();
@@ -181,79 +244,6 @@ export class AppComponent implements OnInit {
             s.unsubscribe();
         }
     }
-
-    startSSE(): void {
-        if (this.sseWorker) {
-            this.stopWorker(this.sseWorker, null);
-        }
-        let authKey: string;
-        let authValue: string;
-        if (!this.user) {
-            return;
-        }
-
-        if (window['SharedWorker']) {
-            this.sseWorker = new CDSSharedWorker('./assets/worker/sharedWorker.js');
-            if (this.heartbeatToken !== 0) {
-                clearInterval(this.heartbeatToken);
-            }
-
-            this.heartbeatToken = window.setInterval(() => {
-                let d = (new Date()).getTime();
-                if (this.lastPing !== 0 && (d - this.lastPing) > 11000) {
-                    // If no ping in the last 11s restart SSE
-                    this.startSSE();
-                }
-            }, 2000);
-        } else {
-            this.sseWorker = new CDSWebWorker('./assets/worker/webWorker.js');
-        }
-
-        this.sseWorker.start({
-            headAuthKey: authKey,
-            headAuthValue: authValue,
-            urlSubscribe: '/cdsapi/events/subscribe',
-            urlUnsubscribe: '/cdsapi/events/unsubscribe',
-            sseURL: '/cdsapi/events',
-            pingURL: '/cdsapi/user/me'
-        });
-        this._sseSubscription = this.sseWorker.response()
-            .pipe(
-                filter((e) => e != null),
-                bufferTime(2000),
-                filter((events) => events.length !== 0),
-
-            )
-            .subscribe((events) => {
-                this.zone.run(() => {
-                    let resultEvents = (<Array<Event>>events).reduce((results, e) => {
-                        if (!e.type_event || e.type_event.indexOf(EventType.RUN_WORKFLOW_PREFIX) !== 0) {
-                            results.push(e);
-                        } else {
-                            let wr = results.find(re => re.project_key === e.project_key
-                                && re.workflow_name === e.workflow_name && re.type_event === e.type_event);
-                            if (!wr) {
-                                results.push(e);
-                            }
-                        }
-                        return results;
-                    }, new Array<Event>());
-                    for (let e of resultEvents) {
-                        if (e.healthCheck != null) {
-                            this.lastPing = (new Date()).getTime();
-                            // 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-                            if (e.healthCheck > 1) {
-                                // Reopen SSE
-                                this.startSSE();
-                            }
-                        } else {
-                            this._appService.manageEvent(<Event>e);
-                        }
-                    }
-                });
-            });
-    }
-
 
     startVersionWorker(): void {
         this.stopWorker(this.versionWorker, this.versionWorkerSubscription);

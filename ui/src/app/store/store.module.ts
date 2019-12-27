@@ -8,6 +8,7 @@ import { SharedModule } from 'app/shared/shared.module';
 import { ApplicationsState } from 'app/store/applications.state';
 import { CDSState } from 'app/store/cds.state';
 import { PipelinesState } from 'app/store/pipelines.state';
+import { QueueState } from 'app/store/queue.state';
 import { environment as env } from '../../environments/environment';
 import { AuthenticationState } from './authentication.state';
 import { ProjectState } from './project.state';
@@ -26,6 +27,7 @@ import { WorkflowState } from './workflow.state';
             CDSState,
             ProjectState,
             PipelinesState,
+            QueueState,
             WorkflowState
         ], { developmentMode: !env.production })
     ],

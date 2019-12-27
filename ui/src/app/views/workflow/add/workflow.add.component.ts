@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, NgZone, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { EventService } from 'app/event.service';
 import { Operation, PerformAsCodeResponse } from 'app/model/operation.model';
 import { Project } from 'app/model/project.model';
 import { Repository } from 'app/model/repositories.model';
@@ -15,10 +16,9 @@ import { WorkflowTemplateService } from 'app/service/workflow-template/workflow-
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
 import { SharedService } from 'app/shared/shared.service';
 import { ToastService } from 'app/shared/toast/ToastService';
-import { CDSWebWorker } from 'app/shared/worker/web.worker';
-import { AuthenticationState } from 'app/store/authentication.state';
 import { ProjectState, ProjectStateModel } from 'app/store/project.state';
 import { CreateWorkflow, ImportWorkflow } from 'app/store/workflow.action';
+import { WorkflowState, WorkflowStateModel } from 'app/store/workflow.state';
 import { Subscription } from 'rxjs';
 import { filter, finalize, first } from 'rxjs/operators';
 
@@ -55,7 +55,6 @@ workflow:
     selectedStrategy: VCSStrategy;
     pollingImport = false;
     pollingResponse: Operation;
-    webworkerSub: Subscription;
     asCodeResult: PerformAsCodeResponse;
     projectSubscription: Subscription;
     templates: Array<WorkflowTemplate>;
@@ -69,6 +68,7 @@ workflow:
     duplicateWorkflowName = false;
     fileTooLarge = false;
     themeSubscription: Subscription;
+    storeSub: Subscription;
 
     constructor(
         private _store: Store,
@@ -81,7 +81,8 @@ workflow:
         private _workflowTemplateService: WorkflowTemplateService,
         private _sharedService: SharedService,
         private _theme: ThemeStore,
-        private _cd: ChangeDetectorRef
+        private _cd: ChangeDetectorRef,
+        private _eventService: EventService
     ) {
         this.workflow = new Workflow();
         this.selectedStrategy = new VCSStrategy();
@@ -213,31 +214,16 @@ workflow:
             this.pollingImport = true;
             this.pollingResponse = res;
             if (res.status < 2) {
-                this.startOperationWorker(res.uuid);
-            }
-        });
-    }
-
-    startOperationWorker(uuid: string): void {
-        // poll operation
-        let zone = new NgZone({ enableLongStackTrace: false });
-        let webworker = new CDSWebWorker('./assets/worker/web/operation.js')
-        webworker.start({
-            'user': this._store.selectSnapshot(AuthenticationState.user),
-            // 'session': this._authStore.getSessionToken(),
-            'api': '/cdsapi',
-            'path': '/import/' + this.project.key + '/' + uuid
-        });
-        this.webworkerSub = webworker.response().subscribe(ope => {
-            if (ope) {
-                zone.run(() => {
-                    this.pollingResponse = JSON.parse(ope);
-                    if (this.pollingResponse.status > 1) {
-                        this.pollingImport = false;
-                        webworker.stop();
-                    }
-                    this._cd.markForCheck();
-                });
+                this._eventService.addOperationFilter(res.uuid);
+                this.storeSub = this._store.select(WorkflowState.getCurrent())
+                    .subscribe((s: WorkflowStateModel) => {
+                        if (s.operation && s.operation.uuid === res.uuid) {
+                            this.pollingResponse = s.operation;
+                            if (this.pollingResponse.status > 1) {
+                                this.pollingImport = false;
+                            }
+                        }
+                    });
             }
         });
     }

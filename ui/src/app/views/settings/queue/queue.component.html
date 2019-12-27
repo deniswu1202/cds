@@ -1,25 +1,26 @@
 <div class="wrapper">
     <app-breadcrumb [path]="path"></app-breadcrumb>
     <app-scrollview class="scrollview">
-        <h2><span *ngIf="!loading && nodeJobRuns && nodeJobRuns.length > 0">({{nodeJobRuns.length}}
-                jobs)</span></h2>
-        <div *ngIf="!loading && nodeJobRuns;then showQueue;else loadQueue"></div>
-        <ng-template #showQueue>
+        <ng-container *ngIf="loading">
+            <div class="ui text active loader">{{ 'common_loading' | translate }}</div>
+        </ng-container>
+        <ng-container *ngIf="!loading">
+            <h2><span>({{filteredNodeJobRuns.length+ ' '}} jobs)</span></h2>
             <div class="model">
                 <div class="ui grid">
                     <div class="ui row">
                         <div class="ui wide column">
                             <sui-multi-select class="selection" [(ngModel)]="status" [options]="statusOptions"
-                                [isSearchable]="true" (ngModelChange)="statusFilterChange()" #multiSelect>
+                                              [isSearchable]="true" (ngModelChange)="filterJobs()" #multiSelect>
                                 <sui-select-option *ngFor="let option of multiSelect.filteredOptions" [value]="option">
                                 </sui-select-option>
                             </sui-multi-select>
                         </div>
                     </div>
                 </div>
-
-                <table class="ui fixed celled table">
-                    <thead>
+                <ng-container *ngIf="filteredNodeJobRuns.length > 0">
+                    <table class="ui fixed celled table">
+                        <thead>
                         <tr>
                             <th class="two wide">since</th>
                             <th class="two wide">status</th>
@@ -31,27 +32,27 @@
                             <th class="three wide" *ngIf="user.admin">requirements</th>
                             <th class="two wide"></th>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <tr *ngFor="let wNodeJobRun of nodeJobRuns; let index = index">
+                        </thead>
+                        <tbody>
+                        <tr *ngFor="let wNodeJobRun of filteredNodeJobRuns; let index = index">
                             <td>
                                 {{wNodeJobRun.queued | amTimeAgo}}
                             </td>
                             <td>
-                                {{wNodeJobRun.status}}
+                                {{wNodeJobRun.Status}}
                             </td>
                             <td>
                                 {{bookedOrBuildingByList[index]}}
                             </td>
                             <td>
                                 <a class="ui" [routerLink]="['/project', parametersMaps[index]['cds.project'], 'workflow', parametersMaps[index]['cds.workflow'], 'run', parametersMaps[index]['cds.run.number']]"
-                                    *ngIf="parametersMaps[index] != null">
+                                   *ngIf="parametersMaps[index] != null">
                                     {{parametersMaps[index]['cds.run.number']}}
                                 </a>
                             </td>
                             <td>
                                 <a class="ui" [routerLink]="['/project', parametersMaps[index]['cds.project'], 'workflow', parametersMaps[index]['cds.workflow']]"
-                                    *ngIf="parametersMaps[index] != null">
+                                   *ngIf="parametersMaps[index] != null">
                                     {{parametersMaps[index]['cds.project']}}/{{parametersMaps[index]['cds.workflow']}}
                                 </a>
                             </td>
@@ -63,28 +64,29 @@
                             <td>
                                 <span *ngIf="parametersMaps[index] != null">
                                     {{parametersMaps[index]['cds.triggered_by'] ||
-                                    parametersMaps[index]['cds.triggered_by.username']}}
+                                parametersMaps[index]['cds.triggered_by.username']}}
                                 </span>
                             </td>
                             <td *ngIf="user.admin">
-                                <span *ngIf="wNodeJobRun.job != null && wNodeJobRun.job.action != null && wNodeJobRun.job.action.requirements != null">
+                                <span *ngIf="wNodeJobRun.Requirements">
                                     {{requirementsList[index]}}
                                 </span>
                             </td>
                             <td class="center aligned">
                                 <button class="ui labeled icon button red" [class.loading]="wNodeJobRun.updating"
-                                    [disabled]="wNodeJobRun.updating" (click)="stopNode(index)">
+                                        [disabled]="wNodeJobRun.updating" (click)="stopNode(index)">
                                     <i class="stop icon"></i>
                                     {{ 'common_stop' | translate }}
                                 </button>
                             </td>
                         </tr>
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </ng-container>
+                <ng-container *ngIf="filteredNodeJobRuns.length === 0">
+                    <div class="ui info message">{{'queue_no_job' | translate }}</div>
+                </ng-container>
             </div>
-        </ng-template>
-        <ng-template #loadQueue>
-            <div class="ui text active loader">{{ 'common_loading' | translate }}</div>
-        </ng-template>
+        </ng-container>
     </app-scrollview>
 </div>

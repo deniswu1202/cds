@@ -35,3 +35,9 @@ export class Parameter {
         return parameter;
     }
 }
+
+export class ParameterEventPayload {
+    Name: string;
+    Type: string;
+    Value: string;
+}

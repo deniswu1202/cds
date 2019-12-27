@@ -5,11 +5,11 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { TranslateLoader, TranslateModule } from '@ngx-translate/core';
 import { TranslateHttpLoader } from '@ngx-translate/http-loader';
 import { ToasterModule } from 'angular2-toaster/angular2-toaster';
+import { EventService } from 'app/event.service';
 import { NgxsStoreModule } from 'app/store/store.module';
 import * as Raven from 'raven-js';
 import { AppComponent } from './app.component';
 import { routing } from './app.routing';
-import { AppService } from './app.service';
 import { ServicesModule } from './service/services.module';
 import { SharedModule } from './shared/shared.module';
 import { NavbarModule } from './views/navbar/navbar.module';
@@ -40,7 +40,7 @@ let ngModule: NgModule = {
         ServicesModule,
     ],
     providers: [
-        AppService,
+        EventService,
         { provide: LOCALE_ID, useValue: navigator.language.match(/fr/) ? 'fr' : 'en' }
     ],
     bootstrap: [AppComponent]

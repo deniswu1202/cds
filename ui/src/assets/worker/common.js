@@ -52,9 +52,3 @@ function fibonacci (retry) {
     }
     return fibonacci(retry - 1) + fibonacci(retry - 2);
 }
-
-function connectSSE(url, headAuthKey, headAuthValue) {
-    var headers = {};
-    headers[headAuthKey] = headAuthValue;
-    return new EventSourcePolyfill(url, {headers: headers, errorOnTimeout: false, checkActivity: false, heartbeatTimeout: 300000});
-}

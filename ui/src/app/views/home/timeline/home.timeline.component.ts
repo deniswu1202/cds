@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { AppService } from 'app/app.service';
+import { EventService } from 'app/event.service';
 import { finalize, first } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
 import { Event } from '../../../model/event.model';
@@ -34,14 +34,14 @@ export class HomeTimelineComponent implements OnInit {
     constructor(private _timelineStore: TimelineStore,
         private _translate: TranslateService,
         private _toast: ToastService,
-        private _appService: AppService,
+        private _eventService: EventService,
         private _cd: ChangeDetectorRef
     ) { }
 
     ngOnInit(): void {
         this.filterSub = this._timelineStore.getFilter().subscribe(f => {
             this.filter = f;
-            this._appService.initFilter(this.filter);
+            this._eventService.initFilter(this.filter);
             if (this.timelineSub) {
                 this.timelineSub.unsubscribe();
             }

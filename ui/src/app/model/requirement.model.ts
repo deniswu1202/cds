@@ -11,3 +11,10 @@ export class Requirement {
         this.opts = '';
     }
 }
+
+export class RequirementEventPayload {
+    Name: string;
+    Type: string;
+    Value: string;
+    Opts: string;
+}

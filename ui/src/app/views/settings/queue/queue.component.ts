@@ -1,15 +1,17 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, NgZone, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
 import { PipelineStatus } from 'app/model/pipeline.model';
 import { AuthentifiedUser } from 'app/model/user.model';
-import { WorkflowNodeJobRun } from 'app/model/workflow.run.model';
 import { WorkflowRunService } from 'app/service/workflow/run/workflow.run.service';
 import { PathItem } from 'app/shared/breadcrumb/breadcrumb.component';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
 import { ToastService } from 'app/shared/toast/ToastService';
-import { CDSWebWorker } from 'app/shared/worker/web.worker';
 import { AuthenticationState } from 'app/store/authentication.state';
+import { GetQueue } from 'app/store/queue.action';
+import { QueueState, QueueStateModel } from 'app/store/queue.state';
+import { cloneDeep } from 'lodash-es';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -20,16 +22,15 @@ import { finalize } from 'rxjs/operators';
     changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
-export class QueueComponent implements OnDestroy {
-    queueWorker: CDSWebWorker;
-    zone: NgZone;
+export class QueueComponent {
     queueSubscription: Subscription;
+    nodeJobRuns: Array<EventWorkflowNodeJobRunPayload> = [];
+    filteredNodeJobRuns: Array<EventWorkflowNodeJobRunPayload> = [];
     user: AuthentifiedUser;
-    nodeJobRuns: Array<WorkflowNodeJobRun> = [];
     parametersMaps: Array<{}> = [];
     requirementsList: Array<string> = [];
     bookedOrBuildingByList: Array<string> = [];
-    loading = true;
+    loading: boolean;
     statusOptions: Array<string> = [PipelineStatus.WAITING, PipelineStatus.BUILDING];
     status: Array<string>;
     path: Array<PathItem>;
@@ -41,11 +42,45 @@ export class QueueComponent implements OnDestroy {
         private _translate: TranslateService,
         private _cd: ChangeDetectorRef
     ) {
-        this.zone = new NgZone({ enableLongStackTrace: false });
         this.loading = true;
         this.status = [this.statusOptions[0]];
         this.user = this._store.selectSnapshot(AuthenticationState.user);
-        this.startWorker();
+
+        this.queueSubscription = this._store.select(QueueState.getCurrent()).subscribe((s: QueueStateModel) => {
+            this.nodeJobRuns = cloneDeep(s.queue);
+            this.filterJobs();
+            this.loading = s.loading;
+            if (Array.isArray(this.nodeJobRuns) && this.nodeJobRuns.length > 0) {
+                this.requirementsList = [];
+                this.bookedOrBuildingByList = [];
+                this.parametersMaps = this.nodeJobRuns.map((nj) => {
+                    if (this.user.isMaintainer() && nj.Requirements) {
+                        let requirements = nj.Requirements
+                            .reduce((reqs, req) => `type: ${req.Type}, value: ${req.Value}; ${reqs}`, '');
+                        this.requirementsList.push(requirements);
+                    }
+                    this.bookedOrBuildingByList.push(((): string => {
+                        if (nj.Status === PipelineStatus.BUILDING) {
+                            return nj.WorkerName;
+                        }
+                        if (nj.BookByName) {
+                            return nj.BookByName;
+                        }
+                        return '';
+                    })());
+                    if (!nj.Parameters) {
+                        return null;
+                    }
+                    return nj.Parameters.reduce((params, param) => {
+                        params[param.Name] = param.Value;
+                        return params;
+                    }, {});
+                });
+            }
+            this._cd.markForCheck();
+        });
+
+        this.refreshQueue();
 
         this.path = [<PathItem>{
             translate: 'common_settings'
@@ -54,75 +89,14 @@ export class QueueComponent implements OnDestroy {
         }];
     }
 
-    ngOnDestroy(): void {
-        if (this.queueWorker) {
-            this.queueWorker.stop();
-        }
+    filterJobs(): void {
+        this.filteredNodeJobRuns = this.nodeJobRuns.filter(njr => this.status.find(s => s === njr.Status));
     }
 
-    statusFilterChange(): void {
-        this.queueWorker.stop();
-        this.queueWorker.start(this.getQueueWorkerParams());
-    }
-
-    getQueueWorkerParams(): any {
-        return {
-            'user': this._store.selectSnapshot(AuthenticationState.user),
-            // 'session': this._authStore.getSessionToken(),
-            'api': '/cdsapi',
-            'status': this.status.length > 0 ? this.status : this.statusOptions
-        };
-    }
-
-    startWorker() {
-        if (this.queueWorker) {
-            this.queueWorker.stop();
-        }
-        if (this.queueSubscription) {
-            this.queueSubscription.unsubscribe();
-        }
-        // Start web worker
-        this.queueWorker = new CDSWebWorker('./assets/worker/web/queue.js');
-        this.queueWorker.start(this.getQueueWorkerParams());
-
-        this.queueSubscription = this.queueWorker.response().subscribe(wrString => {
-            if (!wrString) {
-                return;
-            }
-            this.loading = false;
-            this.zone.run(() => {
-                this.nodeJobRuns = <Array<WorkflowNodeJobRun>>JSON.parse(wrString);
-
-                if (Array.isArray(this.nodeJobRuns) && this.nodeJobRuns.length > 0) {
-                    this.requirementsList = [];
-                    this.bookedOrBuildingByList = [];
-                    this.parametersMaps = this.nodeJobRuns.map((nj) => {
-                        if (this.user.ring === 'ADMIN' && nj.job && nj.job.action && nj.job.action.requirements) {
-                            let requirements = nj.job.action.requirements
-                                .reduce((reqs, req) => `type: ${req.type}, value: ${req.value}; ${reqs}`, '');
-                            this.requirementsList.push(requirements);
-                        }
-                        this.bookedOrBuildingByList.push(((): string => {
-                            if (nj.status === PipelineStatus.BUILDING) {
-                                return nj.job.worker_name;
-                            }
-                            if (nj.bookedby !== null) {
-                                return nj.bookedby.name;
-                            }
-                            return '';
-                        })());
-                        if (!nj.parameters) {
-                            return null;
-                        }
-                        return nj.parameters.reduce((params, param) => {
-                            params[param.name] = param.value;
-                            return params;
-                        }, {});
-                    });
-                }
-                this._cd.markForCheck();
-            });
-        });
+    refreshQueue(): void {
+        this._store.dispatch(new GetQueue({
+            status: (this.status.length > 0 ? this.status : this.statusOptions)
+        }));
     }
 
     stopNode(index: number) {

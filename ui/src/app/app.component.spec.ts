@@ -13,7 +13,7 @@ import { of } from 'rxjs';
 import 'rxjs/add/observable/of';
 import { AppComponent } from './app.component';
 import { createTranslateLoader } from './app.module';
-import { AppService } from './app.service';
+import { EventService } from './app.service';
 import { Application } from './model/application.model';
 import { Pipeline } from './model/pipeline.model';
 import { Project } from './model/project.model';
@@ -59,7 +59,7 @@ describe('App: CDS', () => {
                 LanguageStore,
                 ThemeStore,
                 NotificationService,
-                AppService,
+                EventService,
                 RouterService,
                 ToastService,
                 BroadcastStore,

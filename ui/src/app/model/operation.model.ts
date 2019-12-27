@@ -8,6 +8,7 @@ export class PerformAsCodeResponse {
     }
 }
 export class Operation {
+    date: string;
     uuid: string;
     url: string;
     strategy: VCSStrategy;
@@ -18,6 +19,30 @@ export class Operation {
     load_files: OperationLoadFiles;
     status: number;
     error: string;
+
+    static FromWS(payload: {}) {
+        let ope = new Operation();
+        ope.error = payload['Error'];
+        ope.date = payload['Date'];
+        ope.load_files = new OperationLoadFiles();
+        let olf = payload['LoadFiles'];
+        ope.load_files.pattern = olf['Pattern'];
+        ope.load_files.results = olf['Results'];
+        ope.repo_fullname = payload['RepoFullName'];
+        ope.status = payload['Status'];
+        ope.uuid = payload['UUID'];
+        ope.url = payload['URL'];
+        ope.vcs_server = payload['VCSServer'];
+        ope.setup = new OperationSetup();
+        let os = payload['Setup'];
+        ope.setup.push = new OperationPush();
+        let push = os['Push'];
+        ope.setup.push.from_branch = push['FromBranch'];
+        ope.setup.push.message = push['Message'];
+        ope.setup.push.pr_link = push['PRLink'];
+        ope.setup.push.to_branch = push['ToBranch'];
+        return ope;
+    }
 
     constructor() {
         this.strategy = new VCSStrategy();
